@@ -33,10 +33,58 @@ using namespace llvm;
 // everything in an anonymous namespace.
 namespace {
 
+void printBlock(BasicBlock* B) {
+  errs() << "(llvm-tutor)   block name: " << B->getName() <<"\n\n";
+  for(auto iit = B->begin(); iit != B->end(); ) {
+    ilist_iterator<
+        ilist_detail::node_options<Instruction, false, false, void>,
+        false, false>
+        Ins = iit++;
+    Instruction* ins = Ins->clone();
+    errs() << "(llvm-tutor)   loop block ins: " << *ins <<"\n";
+    if (BranchInst* br = dyn_cast<BranchInst>(ins)) {
+      for (int bi = 0; bi < br->getNumOperands(); ++bi) {
+        errs() << "(llvm-tutor)  br inst:" << br->getOperand(bi)->getValueName()->getKey()<< "\n";
+      }
+    }
+  }
+  errs() << "\n";
+}
 // This method implements what the pass does
 void visitor(Function &F) {
     errs() << "(llvm-tutor) Hello from: "<< F.getName() << "\n";
     errs() << "(llvm-tutor)   number of arguments: " << F.arg_size() << "\n";
+
+    llvm::DominatorTree DT = llvm::DominatorTree();
+    DT.recalculate(F);
+    auto loopInfo = new llvm::LoopInfoBase<llvm::BasicBlock, llvm::Loop>();
+    loopInfo->releaseMemory();
+    loopInfo->analyze(DT);
+    for(LoopInfo::iterator i=loopInfo->begin();i!=loopInfo->end();++i){
+        Loop *L=*i;
+        auto loop_name = L->getName();
+        errs() << "(llvm-tutor)   loop name: " << loop_name <<"\n";
+
+//        BasicBlock* loop_header = L->getHeader();
+//        printBlock(loop_header);
+//        BasicBlock* loop_latch = L->getLoopLatch();
+//        printBlock(loop_latch);
+
+        for(llvm::Loop::block_iterator bit = L->block_begin(); bit != L->block_end(); bit++){
+            llvm::BasicBlock * B = * bit;
+            printBlock(B);
+        }
+
+        auto loop_vec = L->getSubLoops();
+        errs() << "\n\n";
+        for(size_t lni = 0; lni < loop_vec.size(); ++lni) {
+          errs() << "(llvm-tutor)  sub loop name: " << loop_vec[lni]->getName() <<"\n";
+          for(llvm::Loop::block_iterator bit = loop_vec[lni]->block_begin(); bit != loop_vec[lni]->block_end(); bit++){
+            llvm::BasicBlock * B = * bit;
+            printBlock(B);
+          }
+        }
+    }
 }
 
 // New PM implementation

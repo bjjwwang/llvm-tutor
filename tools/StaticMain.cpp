@@ -1,27 +1,11 @@
-//========================================================================
-// FILE:
-//    StaticMain.cpp
-//
-// DESCRIPTION:
-//    A command-line tool that counts all static calls (i.e. calls as seen
-//    in the source code) in the input LLVM file. Internally it uses the
-//    StaticCallCounter pass.
-//
-// USAGE:
-//    # First, generate an LLVM file:
-//      clang -emit-llvm <input-file> -c -o <output-llvm-file>
-//    # Now you can run this tool as follows:
-//      <BUILD/DIR>/bin/static <output-llvm-file>
-//
-// License: MIT
-//========================================================================
-#include "StaticCallCounter.h"
-
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/Analysis/ScalarEvolutionExpressions.h"
+#include "llvm/Transforms/Utils/Mem2Reg.h"
 
 using namespace llvm;
 
@@ -40,24 +24,75 @@ static cl::opt<std::string> InputModule{cl::Positional,
 //===----------------------------------------------------------------------===//
 // static - implementation
 //===----------------------------------------------------------------------===//
+
+
 static void countStaticCalls(Module &M) {
-  // Create a module pass manager and add StaticCallCounterPrinter to it.
-  ModulePassManager MPM;
-  MPM.addPass(StaticCallCounterPrinter(llvm::errs()));
 
-  // Create an analysis manager and register StaticCallCounter with it.
-  ModuleAnalysisManager MAM;
-  MAM.registerPass([&] { return StaticCallCounter(); });
+  const llvm::Function* test_func = nullptr;
+  llvm::Module* test_mod = nullptr;
+  for (auto it = M.functions().begin(); it != M.functions().end(); ++it) {
+    test_func = &it->getFunction();
+    break;
+  }
+  llvm::Function* test_func2 = const_cast<llvm::Function*>(test_func);
 
+  FunctionPassManager MPM;
+  MPM.addPass(PromotePass());
+  MPM.addPass(ScalarEvolutionPrinterPass(llvm::errs()));
+  FunctionAnalysisManager MAM;
+  //MAM.registerPass([&] { return StaticCallCounter(); });
+  MAM.registerPass([&] {return ScalarEvolutionAnalysis();});
   // Register all available module analysis passes defined in PassRegisty.def.
   // We only really need PassInstrumentationAnalysis (which is pulled by
   // default by PassBuilder), but to keep this concise, let PassBuilder do all
   // the _heavy-lifting_.
   PassBuilder PB;
-  PB.registerModuleAnalyses(MAM);
-
+  PB.registerFunctionAnalyses(MAM);
   // Finally, run the passes registered with MPM
-  MPM.run(M, MAM);
+  MPM.run(*test_func2, MAM);
+
+  auto se = &MAM.getResult<ScalarEvolutionAnalysis>(*test_func2);
+  auto loopInfo = &MAM.getResult<LoopAnalysis>(*test_func2);
+
+  for(LoopInfo::iterator i=loopInfo->begin();i!=loopInfo->end();++i) {
+    Loop *L = *i;
+    errs() << "Loop ";
+    L->getHeader()->printAsOperand(errs(), /*PrintType=*/false);
+    errs() << ": ";
+    SmallVector<BasicBlock *, 8> ExitingBlocks;
+    L->getExitingBlocks(ExitingBlocks);
+    if (ExitingBlocks.size() != 1)
+      errs() << "<multiple exits> ";
+    
+    if (se->hasLoopInvariantBackedgeTakenCount(L)) {
+      errs() << "backedge-taken count is " << *se->getBackedgeTakenCount(L)
+             << "\n";
+      auto back_cnt = se->getBackedgeTakenCount(L);
+      auto scev_con = cast<llvm::SCEVConstant>(back_cnt)->getValue()->getSExtValue();
+      errs()<< "\n";
+    }
+    else
+      errs() << "Unpredictable backedge-taken count.\n";
+
+    if (ExitingBlocks.size() > 1)
+      for (BasicBlock *ExitingBlock : ExitingBlocks) {
+        errs() << "  exit count for " << ExitingBlock->getName() << ": "
+           << *se->getExitCount(L, ExitingBlock) << "\n";
+      }
+    
+    errs() << "Loop ";
+    L->getHeader()->printAsOperand(errs(), /*PrintType=*/false);
+    errs() << ": ";
+    
+    if (!isa<SCEVCouldNotCompute>(se->getConstantMaxBackedgeTakenCount(L))) {
+      errs() << "max backedge-taken count is " << *se->getConstantMaxBackedgeTakenCount(L);
+      if (se->isBackedgeTakenCountMaxOrZero(L))
+        errs() << ", actual taken count either this or zero.";
+    } else {
+      errs() << "Unpredictable max backedge-taken count. ";
+    }
+  }
+
 }
 
 //===----------------------------------------------------------------------===//

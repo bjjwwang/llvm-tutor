@@ -20,6 +20,13 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
 
+
+#include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/IR/InstIterator.h"
+
+using LoopStaticCC = llvm::MapVector<std::string, unsigned>;
+using namespace llvm;
+
 //------------------------------------------------------------------------------
 // New PM interface
 //------------------------------------------------------------------------------

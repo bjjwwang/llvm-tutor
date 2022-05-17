@@ -5,10 +5,11 @@ project(llvm-tutor)
 # 1. VERIFY LLVM INSTALLATION DIR
 # This is just a bit of a sanity checking.
 #===============================================================================
-set(LT_LLVM_INSTALL_DIR "" CACHE PATH "LLVM installation directory")
+set(LT_LLVM_INSTALL_DIR "/Users/jiaweiwang/CLionProjects/llvm-project/llvm/build")
 
 # 1.1 Check the "include| directory
 set(LT_LLVM_INCLUDE_DIR "${LT_LLVM_INSTALL_DIR}/include/llvm")
+message("llvm dir is: ${LT_LLVM_INSTALL_DIR}")
 if(NOT EXISTS "${LT_LLVM_INCLUDE_DIR}")
 message(FATAL_ERROR
   " LT_LLVM_INSTALL_DIR (${LT_LLVM_INCLUDE_DIR}) is invalid.")
@@ -50,7 +51,7 @@ find_package(LLVM 13.0.0 REQUIRED CONFIG)
 
 # Another sanity check
 if(NOT "13" VERSION_EQUAL "${LLVM_VERSION_MAJOR}")
-  message(FATAL_ERROR "Found LLVM ${LLVM_VERSION_MAJOR}, but need LLVM 13")
+  message(FATAL_ERROR "Found LLVM ${LLVM_VERSION_MAJOR}, but need LLVM 12")
 endif()
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
